@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧪 Teste API Turmas</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .content { padding: 30px; }
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .btn:active { transform: translateY(0); }
+        .result {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success { border-color: #4caf50; background: #f1f8f4; }
+        .error { border-color: #f44336; background: #fef1f0; }
+        .info { border-color: #2196f3; background: #e3f2fd; }
+        .icon { font-size: 24px; }
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .day-btn {
+            padding: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            font-size: 13px;
+        }
+        .day-btn:hover { border-color: #667eea; }
+        .day-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 Teste de API - Turmas</h1>
+            <p>Ferramenta de diagnóstico para testar o cadastro de turmas</p>
+        </div>
+
+        <div class="content">
+            <!-- TESTE 1: Verificar Conexão -->
+            <div class="test-section">
+                <h3><span class="icon">🔌</span> 1. Verificar Conexão com API</h3>
+                <button class="btn" onclick="testarConexao()">Testar Conexão</button>
+                <div id="result-conexao" class="result" style="display:none;"></div>
+            </div>
+
+            <!-- TESTE 2: Listar Turmas -->
+            <div class="test-section">
+                <h3><span class="icon">📋</span> 2. Listar Turmas Existentes</h3>
+                <button class="btn" onclick="listarTurmas()">Listar Turmas</button>
+                <div id="result-listar" class="result" style="display:none;"></div>
+            </div>
+
+            <!-- TESTE 3: Criar Nova Turma -->
+            <div class="test-section">
+                <h3><span class="icon">➕</span> 3. Criar Nova Turma</h3>
+                
+                <div class="form-group">
+                    <label>Código *</label>
+                    <input type="text" id="codigo" placeholder="Ex: TUR001" value="TEST001">
+                </div>
+
+                <div class="form-group">
+                    <label>Nome *</label>
+                    <input type="text" id="nome" placeholder="Ex: Turma Teste" value="Turma de Teste">
+                </div>
+
+                <div class="form-group">
+                    <label>Disciplina *</label>
+                    <input type="text" id="disciplina" placeholder="Ex: Inglês" value="Inglês Básico">
+                </div>
+
+                <div class="form-group">
+                    <label>Dias da Semana *</label>
+                    <div class="days-grid">
+                        <div class="day-btn" data-day="segunda" onclick="toggleDay(this)">Segunda</div>
+                        <div class="day-btn" data-day="terça" onclick="toggleDay(this)">Terça</div>
+                        <div class="day-btn" data-day="quarta" onclick="toggleDay(this)">Quarta</div>
+                        <div class="day-btn" data-day="quinta" onclick="toggleDay(this)">Quinta</div>
+                        <div class="day-btn" data-day="sexta" onclick="toggleDay(this)">Sexta</div>
+                        <div class="day-btn" data-day="sábado" onclick="toggleDay(this)">Sábado</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Horário Início *</label>
+                    <input type="time" id="horario_inicio" value="08:00">
+                </div>
+
+                <div class="form-group">
+                    <label>Horário Fim *</label>
+                    <input type="time" id="horario_fim" value="10:00">
+                </div>
+
+                <div class="form-group">
+                    <label>Duração (meses) *</label>
+                    <input type="number" id="duracao_meses" value="6" min="1">
+                </div>
+
+                <button class="btn" onclick="criarTurma()">🚀 Criar Turma</button>
+                <div id="result-criar" class="result" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost/api-login/api/turmas.php';
+        let selectedDays = [];
+
+        function toggleDay(element) {
+            const day = element.dataset.day;
+            element.classList.toggle('active');
+            
+            if (selectedDays.includes(day)) {
+                selectedDays = selectedDays.filter(d => d !== day);
+            } else {
+                selectedDays.push(day);
+            }
+        }
+
+        function showResult(elementId, data, type = 'info') {
+            const el = document.getElementById(elementId);
+            el.style.display = 'block';
+            el.className = `result ${type}`;
+            el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        }
+
+        async function testarConexao() {
+            showResult('result-conexao', '⏳ Testando conexão...', 'info');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+                    }
+                });
+
+                if (response.ok) {
+                    showResult('result-conexao', 
+                        `✅ SUCESSO!\n` +
+                        `Status: ${response.status}\n` +
+                        `API está funcionando corretamente!`, 
+                        'success'
+                    );
+                } else {
+                    const error = await response.json();
+                    showResult('result-conexao', 
+                        `❌ ERRO!\n` +
+                        `Status: ${response.status}\n` +
+                        `Mensagem: ${JSON.stringify(error, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult('result-conexao', 
+                    `❌ ERRO DE CONEXÃO!\n` +
+                    `${error.message}\n\n` +
+                    `Verifique:\n` +
+                    `1. XAMPP está rodando?\n` +
+                    `2. URL da API está correta?\n` +
+                    `3. CORS está configurado?`, 
+                    'error'
+                );
+            }
+        }
+
+        async function listarTurmas() {
+            showResult('result-listar', '⏳ Carregando turmas...', 'info');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResult('result-listar', 
+                        `✅ Turmas encontradas: ${Array.isArray(data) ? data.length : 0}\n\n` +
+                        JSON.stringify(data, null, 2), 
+                        'success'
+                    );
+                } else {
+                    showResult('result-listar', 
+                        `❌ Erro ao listar:\n${JSON.stringify(data, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult('result-listar', `❌ ${error.message}`, 'error');
+            }
+        }
+
+        async function criarTurma() {
+            // Coletar dados
+            const dados = {
+                codigo: document.getElementById('codigo').value,
+                nome: document.getElementById('nome').value,
+                disciplina: document.getElementById('disciplina').value,
+                dias_semana: selectedDays,
+                horario_inicio: document.getElementById('horario_inicio').value,
+                horario_fim: document.getElementById('horario_fim').value,
+                duracao_meses: parseInt(document.getElementById('duracao_meses').value),
+                capacidade_maxima: 30,
+                ano_letivo: new Date().getFullYear(),
+                status: 'ativo'
+            };
+
+            // Validar
+            if (!dados.codigo || !dados.nome || !dados.disciplina) {
+                showResult('result-criar', '❌ Preencha todos os campos obrigatórios!', 'error');
+                return;
+            }
+
+            if (dados.dias_semana.length === 0) {
+                showResult('result-criar', '❌ Selecione pelo menos um dia da semana!', 'error');
+                return;
+            }
+
+            showResult('result-criar', 
+                `⏳ Criando turma...\n\n` +
+                `Dados enviados:\n${JSON.stringify(dados, null, 2)}`, 
+                'info'
+            );
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+                    },
+                    body: JSON.stringify(dados)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showResult('result-criar', 
+                        `✅ TURMA CRIADA COM SUCESSO!\n\n` +
+                        `ID: ${result.id}\n` +
+                        `Código: ${result.codigo}\n` +
+                        `Nome: ${result.name || result.nome}\n\n` +
+                        `Resposta completa:\n${JSON.stringify(result, null, 2)}`, 
+                        'success'
+                    );
+                } else {
+                    showResult('result-criar', 
+                        `❌ ERRO AO CRIAR TURMA!\n\n` +
+                        `Status: ${response.status}\n` +
+                        `Mensagem: ${result.message || 'Erro desconhecido'}\n\n` +
+                        `Detalhes:\n${JSON.stringify(result, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult('result-criar', 
+                    `❌ ERRO DE REDE!\n\n` +
+                    `${error.message}\n\n` +
+                    `Verifique o console do navegador para mais detalhes.`, 
+                    'error'
+                );
+                console.error('Erro detalhado:', error);
+            }
+        }
+    </script>
+</body>
+</html>
