@@ -1,7 +1,22 @@
 <?php
+// ✅ CORS PRIMEIRO (antes de require_once)
+header("Access-Control-Allow-Origin: http://localhost:8080");
+header("Access-Control-Allow-Credentials: true");
+header("Access-Control-Allow-Headers: Authorization, Content-Type");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Content-Type: application/json; charset=UTF-8");
+
+// ✅ Preflight sai ANTES de qualquer validação/include
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+
 /**
- * REGISTRATIONS API - ATUALIZADO
- * ✅ Agora salva username e password na tabela students
+ * REGISTRATIONS API - ATUALIZADO (PASSO 3)
+ * ✅ Credenciais salvas APENAS na tabela students
+ * ✅ Geração de username/password acontece SOMENTE na PRIMEIRA matrícula
+ * ✅ Matrículas seguintes: reutiliza credenciais existentes (não sobrescreve)
  * 
  * 📁 LOCATION: api/registrations.php
  */
@@ -83,7 +98,7 @@ switch($method) {
     case 'POST':
         $data = json_decode(file_get_contents("php://input"));
         
-        // 🔍 VALIDATE REQUIRED FIELDS
+        // 🔍 VALIDATE REQUIRED FIELDS (básicos da matrícula)
         if(empty($data->student_id)) {
             http_response_code(400);
             echo json_encode(["success" => false, "message" => "Student ID is required"]);
@@ -114,25 +129,10 @@ switch($method) {
             exit;
         }
         
-        if(empty($data->username)) {
-            http_response_code(400);
-            echo json_encode(["success" => false, "message" => "Username is required"]);
-            exit;
-        }
-        
-        if(empty($data->password)) {
-            http_response_code(400);
-            echo json_encode(["success" => false, "message" => "Password is required"]);
-            exit;
-        }
-        
         try {
-            // ✅ INICIAR TRANSAÇÃO (para garantir atomicidade)
             $db->beginTransaction();
             
-            // ========================================
             // 1️⃣ VERIFICAR SE ESTUDANTE EXISTE
-            // ========================================
             $checkStudent = "SELECT COUNT(*) FROM students WHERE id = :student_id";
             $stmtCheck = $db->prepare($checkStudent);
             $stmtCheck->bindParam(':student_id', $data->student_id);
@@ -145,9 +145,7 @@ switch($method) {
                 exit;
             }
             
-            // ========================================
             // 2️⃣ VERIFICAR SE CURSO EXISTE
-            // ========================================
             $checkCourse = "SELECT COUNT(*) FROM cursos WHERE codigo = :course_id AND status = 'ativo'";
             $stmtCheck = $db->prepare($checkCourse);
             $stmtCheck->bindParam(':course_id', $data->course_id);
@@ -160,18 +158,16 @@ switch($method) {
                 exit;
             }
             
-            // ========================================
             // 3️⃣ VERIFICAR DUPLICAÇÃO DE MATRÍCULA
-            // ========================================
             $checkDuplicate = "SELECT COUNT(*) FROM registrations 
                               WHERE student_id = :student_id 
                               AND course_id = :course_id 
                               AND period = :period";
             $stmtCheck = $db->prepare($checkDuplicate);
             $stmtCheck->execute([
-                'student_id' => $data->student_id,
-                'course_id' => $data->course_id,
-                'period' => $data->period
+                ':student_id' => $data->student_id,
+                ':course_id'  => $data->course_id,
+                ':period'     => $data->period
             ]);
             
             if($stmtCheck->fetchColumn() > 0) {
@@ -185,21 +181,68 @@ switch($method) {
             }
             
             // ========================================
-            // 4️⃣ HASH DA SENHA
+            // VERIFICAR SE ESTUDANTE JÁ TEM CREDENCIAIS
             // ========================================
-            $password_hash = password_hash($data->password, PASSWORD_DEFAULT);
-            
+            $checkCredentials = "SELECT username, password FROM students WHERE id = :student_id";
+            $stmtCheck = $db->prepare($checkCredentials);
+            $stmtCheck->bindParam(':student_id', $data->student_id);
+            $stmtCheck->execute();
+            $studentCredentials = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+            // Se NÃO tiver credenciais → Gerar (primeira matrícula)
+            if (empty($studentCredentials['username']) || empty($studentCredentials['password'])) {
+                
+                // Validar que frontend enviou username/password
+                if (empty($data->username) || empty($data->password)) {
+                    $db->rollBack();
+                    http_response_code(400);
+                    echo json_encode([
+                        "success" => false,
+                        "message" => "Username and password are required for first enrollment"
+                    ]);
+                    exit;
+                }
+                
+                // Hash da senha
+                $password_hash = password_hash($data->password, PASSWORD_DEFAULT);
+                
+                // Atualizar tabela students com credenciais
+                $updateCredentials = "UPDATE students 
+                                     SET username = :username, 
+                                         password = :password 
+                                     WHERE id = :student_id";
+                
+                $stmtUpdate = $db->prepare($updateCredentials);
+                $stmtUpdate->bindParam(':username', $data->username);
+                $stmtUpdate->bindParam(':password', $password_hash);
+                $stmtUpdate->bindParam(':student_id', $data->student_id);
+                
+                if (!$stmtUpdate->execute()) {
+                    $db->rollBack();
+                    http_response_code(503);
+                    echo json_encode([
+                        "success" => false,
+                        "message" => "Failed to create credentials"
+                    ]);
+                    exit;
+                }
+                
+                // echo "✅ Credenciais criadas para primeira matrícula\n"; // Debug (remova em produção)
+            } // else { 
+                // echo "✅ Estudante já possui credenciais existentes\n"; // Debug (remova em produção)
+            // }
+
             // ========================================
-            // 5️⃣ INSERIR MATRÍCULA NA TABELA REGISTRATIONS
+            // INSERIR MATRÍCULA NA TABELA REGISTRATIONS (sem username/password)
             // ========================================
             $query = "INSERT INTO registrations 
                       (student_id, course_id, class_id, enrollment_number, period, 
                        enrollment_date, status, payment_status, enrollment_fee, 
-                       monthly_fee, username, password, observations) 
+                       monthly_fee, observations) 
                       VALUES 
                       (:student_id, :course_id, :class_id, :enrollment_number, :period,
                        :enrollment_date, :status, :payment_status, :enrollment_fee,
-                       :monthly_fee, :username, :password, :observations)";
+                       :monthly_fee, :observations)";
             
             $stmt = $db->prepare($query);
             
@@ -225,9 +268,6 @@ switch($method) {
             $monthly_fee = $data->monthly_fee ?? 0.00;
             $stmt->bindParam(':monthly_fee', $monthly_fee);
             
-            $stmt->bindParam(':username', $data->username);
-            $stmt->bindParam(':password', $password_hash);
-            
             $observations = $data->observations ?? null;
             $stmt->bindParam(':observations', $observations);
             
@@ -240,47 +280,18 @@ switch($method) {
             
             $registration_id = $db->lastInsertId();
             
-            // ========================================
-            // 6️⃣ 🆕 ATUALIZAR TABELA STUDENTS COM CREDENCIAIS
-            // ========================================
-            $updateStudent = "UPDATE students 
-                             SET username = :username,
-                                 password = :password,
-                                 enrollment_number = :enrollment_number,
-                                 curso_id = :course_id
-                             WHERE id = :student_id";
-            
-            $stmtUpdate = $db->prepare($updateStudent);
-            $stmtUpdate->bindParam(':username', $data->username);
-            $stmtUpdate->bindParam(':password', $password_hash);
-            $stmtUpdate->bindParam(':enrollment_number', $data->enrollment_number);
-            $stmtUpdate->bindParam(':course_id', $data->course_id);
-            $stmtUpdate->bindParam(':student_id', $data->student_id);
-            
-            if(!$stmtUpdate->execute()) {
-                $db->rollBack();
-                http_response_code(503);
-                echo json_encode([
-                    "success" => false, 
-                    "message" => "Registration created but failed to update student credentials"
-                ]);
-                exit;
-            }
-            
-            // ========================================
-            // ✅ COMMIT TRANSACTION
-            // ========================================
             $db->commit();
             
             http_response_code(201);
             echo json_encode([
                 "success" => true,
-                "message" => "Registration created successfully and student credentials updated",
+                "message" => empty($studentCredentials['username']) || empty($studentCredentials['password'])
+                    ? "Registration created successfully and student credentials set" 
+                    : "Registration created successfully (existing credentials reused)",
                 "id" => $registration_id
             ]);
             
         } catch (PDOException $e) {
-            // Rollback em caso de erro
             if($db->inTransaction()) {
                 $db->rollBack();
             }
@@ -301,7 +312,7 @@ switch($method) {
         }
         break;
 
-    // ==================== PUT - UPDATE REGISTRATION ====================
+    // ==================== PUT e DELETE (sem alterações) ====================
     case 'PUT':
         $data = json_decode(file_get_contents("php://input"));
         
@@ -347,7 +358,6 @@ switch($method) {
         }
         break;
 
-    // ==================== DELETE - CANCEL REGISTRATION ====================
     case 'DELETE':
         $data = json_decode(file_get_contents("php://input"));
         

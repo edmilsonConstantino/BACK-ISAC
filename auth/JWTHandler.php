@@ -24,13 +24,13 @@ class JWTHandler {
      * Gera um Access Token
      * @param int $user_id
      * @param string $email
-     * @param string $user_type (admin, professor, estudante)
+     * @param string $role (admin, academic_admin, teacher, student)
      * @return string JWT Token
      */
-    public function generateToken($user_id, $email, $user_type) {
+    public function generateToken($user_id, $email, $role, $user_type = null) {
         $issued_at = time();
         $expiration_time = $issued_at + $this->token_expiration;
-        
+
         $payload = array(
             "iss" => $this->issuer,
             "aud" => $this->audience,
@@ -40,7 +40,8 @@ class JWTHandler {
             "data" => array(
                 "user_id" => $user_id,
                 "email" => $email,
-                "user_type" => $user_type
+                "role" => $role,
+                "user_type" => $user_type ?? $role
             )
         );
 
@@ -50,12 +51,13 @@ class JWTHandler {
     /**
      * Gera um Refresh Token
      * @param int $user_id
+     * @param string $user_type (admin, academic_admin, student, teacher)
      * @return string JWT Refresh Token
      */
-    public function generateRefreshToken($user_id) {
+    public function generateRefreshToken($user_id, $user_type = '') {
         $issued_at = time();
         $expiration_time = $issued_at + $this->refresh_token_expiration;
-        
+
         $payload = array(
             "iss" => $this->issuer,
             "aud" => $this->audience,
@@ -63,6 +65,7 @@ class JWTHandler {
             "exp" => $expiration_time,
             "data" => array(
                 "user_id" => $user_id,
+                "user_type" => $user_type,
                 "type" => "refresh"
             )
         );
@@ -121,23 +124,23 @@ class JWTHandler {
     }
 
     /**
-     * Verifica se o usuário é professor
+     * Verifica se o usuário é professor (teacher)
      * @param string $token
      * @return bool
      */
     public function isProfessor($token) {
         $data = $this->getTokenData($token);
-        return $data && isset($data->user_type) && $data->user_type === 'professor';
+        return $data && isset($data->user_type) && $data->user_type === 'teacher';
     }
 
     /**
-     * Verifica se o usuário é estudante
+     * Verifica se o usuário é estudante (student)
      * @param string $token
      * @return bool
      */
     public function isEstudante($token) {
         $data = $this->getTokenData($token);
-        return $data && isset($data->user_type) && $data->user_type === 'estudante';
+        return $data && isset($data->user_type) && $data->user_type === 'student';
     }
 
     /**

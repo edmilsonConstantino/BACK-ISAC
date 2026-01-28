@@ -22,9 +22,14 @@ CREATE TABLE IF NOT EXISTS users (
     nome VARCHAR(100) NOT NULL,
     email VARCHAR(150) UNIQUE NOT NULL,
     senha VARCHAR(255) NOT NULL,
-    role ENUM('admin','docente','aluno','academic_admin') NOT NULL,
+    role ENUM('admin','academic_admin','teacher','student') NOT NULL,
     avatar VARCHAR(10) DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+    refresh_token VARCHAR(500) DEFAULT NULL,
+    token_expiry DATETIME DEFAULT NULL,
+    last_login DATETIME DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 ";
 

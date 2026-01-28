@@ -44,14 +44,14 @@ try {
             'nome' => 'Professor Silva',
             'email' => 'professor@example.com',
             'senha' => hashPassword('senha123'),
-            'role' => 'docente',
+            'role' => 'teacher',
             'avatar' => '👨‍🏫'
         ],
         [
             'nome' => 'João Aluno',
             'email' => 'aluno@example.com',
             'senha' => hashPassword('senha123'),
-            'role' => 'aluno',
+            'role' => 'student',
             'avatar' => '👨‍💻'
         ]
     ];

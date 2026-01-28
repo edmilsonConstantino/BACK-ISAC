@@ -306,95 +306,151 @@ switch($method) {
         
         // POST PADRÃO - Criar turma
         $data = json_decode(file_get_contents("php://input"));
-        
-        if(!empty($data->codigo) && !empty($data->nome) && !empty($data->disciplina)) {
-            try {
-                $query = "INSERT INTO turmas 
-                          (codigo, nome, disciplina, professor_id, semestre, ano_letivo, 
-                           duracao_meses, capacidade_maxima, sala, dias_semana, 
-                           horario_inicio, horario_fim, data_inicio, data_fim, 
-                           carga_horaria, creditos, observacoes, status, 
-                           data_criacao, data_atualizacao) 
-                          VALUES 
-                          (:codigo, :nome, :disciplina, :professor_id, :semestre, :ano_letivo, 
-                           :duracao_meses, :capacidade_maxima, :sala, :dias_semana, 
-                           :horario_inicio, :horario_fim, :data_inicio, :data_fim, 
-                           :carga_horaria, :creditos, :observacoes, :status, 
+
+        if(!empty($data->nome) && !empty($data->curso_id)) {
+
+          try {
+
+            $ano_letivo = $data->ano_letivo ?? date('Y');
+
+            // 🔥 GERAR CÓDIGO: CURSO-ANO-SEQ (ex: INF-2026-001)
+            $prefixo = strtoupper(trim($data->curso_id)); // ex: INF
+            $codigo = null;
+
+            // tentativa com retry (evita duplicação em concorrência)
+            for ($tentativa = 0; $tentativa < 5; $tentativa++) {
+
+              // pega o maior sequencial do ano+curso
+              $like = "{$prefixo}-{$ano_letivo}-%";
+              $q = "SELECT codigo FROM turmas
+                    WHERE codigo LIKE :like
+                    ORDER BY id DESC
+                    LIMIT 1";
+              $st = $db->prepare($q);
+              $st->bindParam(':like', $like);
+              $st->execute();
+              $last = $st->fetchColumn();
+
+              $seq = 1;
+              if ($last) {
+                $parts = explode('-', $last);
+                $n = intval(end($parts));
+                $seq = $n + 1;
+              }
+
+              $codigo = sprintf("%s-%s-%03d", $prefixo, $ano_letivo, $seq);
+
+              // tenta inserir
+              try {
+                $query = "INSERT INTO turmas
+                          (codigo, nome, curso_id, professor_id, semestre, ano_letivo,
+                           duracao_meses, capacidade_maxima, sala, dias_semana,
+                           horario_inicio, horario_fim, data_inicio, data_fim,
+                           carga_horaria, creditos, observacoes, status,
+                           data_criacao, data_atualizacao)
+                          VALUES
+                          (:codigo, :nome, :curso_id, :professor_id, :semestre, :ano_letivo,
+                           :duracao_meses, :capacidade_maxima, :sala, :dias_semana,
+                           :horario_inicio, :horario_fim, :data_inicio, :data_fim,
+                           :carga_horaria, :creditos, :observacoes, :status,
                            NOW(), NOW())";
-                
+
                 $stmt = $db->prepare($query);
-                
-                $stmt->bindParam(':codigo', $data->codigo);
+
+                $stmt->bindParam(':codigo', $codigo);
                 $stmt->bindParam(':nome', $data->nome);
-                $stmt->bindParam(':disciplina', $data->disciplina);
-                
+                $stmt->bindParam(':curso_id', $data->curso_id);
+
                 $professor_id = $data->professor_id ?? null;
                 $stmt->bindParam(':professor_id', $professor_id);
-                
+
                 $semestre = $data->semestre ?? null;
                 $stmt->bindParam(':semestre', $semestre);
-                
-                $ano_letivo = $data->ano_letivo ?? date('Y');
+
                 $stmt->bindParam(':ano_letivo', $ano_letivo);
-                
+
                 $duracao_meses = $data->duracao_meses ?? 6;
                 $stmt->bindParam(':duracao_meses', $duracao_meses);
-                
+
                 $capacidade_maxima = $data->capacidade_maxima ?? 30;
                 $stmt->bindParam(':capacidade_maxima', $capacidade_maxima);
-                
+
                 $sala = $data->sala ?? null;
                 $stmt->bindParam(':sala', $sala);
-                
+
                 $dias_semana = $data->dias_semana ?? '';
                 $stmt->bindParam(':dias_semana', $dias_semana);
-                
+
                 $horario_inicio = $data->horario_inicio ?? '00:00:00';
                 $stmt->bindParam(':horario_inicio', $horario_inicio);
-                
+
                 $horario_fim = $data->horario_fim ?? '00:00:00';
                 $stmt->bindParam(':horario_fim', $horario_fim);
-                
+
                 $data_inicio = $data->data_inicio ?? null;
                 $stmt->bindParam(':data_inicio', $data_inicio);
-                
+
                 $data_fim = $data->data_fim ?? null;
                 $stmt->bindParam(':data_fim', $data_fim);
-                
+
                 $carga_horaria = $data->carga_horaria ?? null;
                 $stmt->bindParam(':carga_horaria', $carga_horaria);
-                
+
                 $creditos = $data->creditos ?? null;
                 $stmt->bindParam(':creditos', $creditos);
-                
+
                 $observacoes = $data->observacoes ?? null;
                 $stmt->bindParam(':observacoes', $observacoes);
-                
+
                 $status = $data->status ?? 'ativo';
                 $stmt->bindParam(':status', $status);
-                
-                if($stmt->execute()) {
-                    http_response_code(201);
-                    echo json_encode([
-                        "success" => true,
-                        "message" => "Turma criada com sucesso.",
-                        "id" => $db->lastInsertId()
-                    ]);
-                }
-                
-            } catch (PDOException $e) {
-                http_response_code(500);
+
+                $stmt->execute();
+
+                $id = $db->lastInsertId();
+
+                // ✅ retornar turma criada
+                $st2 = $db->prepare("SELECT * FROM turmas WHERE id = :id");
+                $st2->bindParam(':id', $id);
+                $st2->execute();
+
+                http_response_code(201);
                 echo json_encode([
-                    "success" => false,
-                    "message" => "Erro ao criar turma: " . $e->getMessage()
+                  "success" => true,
+                  "message" => "Turma criada com sucesso.",
+                  "data" => $st2->fetch(PDO::FETCH_ASSOC)
                 ]);
+                exit();
+
+              } catch (PDOException $e) {
+                // se der duplicação de código, tenta de novo
+                if ((int)$e->errorInfo[1] === 1062) {
+                  continue;
+                }
+                throw $e;
+              }
             }
-        } else {
-            http_response_code(400);
+
+            http_response_code(500);
             echo json_encode([
-                "success" => false,
-                "message" => "Dados incompletos. Código, nome e disciplina são obrigatórios."
+              "success" => false,
+              "message" => "Falha ao gerar código único da turma. Tente novamente."
             ]);
+
+          } catch (PDOException $e) {
+            http_response_code(500);
+            echo json_encode([
+              "success" => false,
+              "message" => "Erro ao criar turma: " . $e->getMessage()
+            ]);
+          }
+
+        } else {
+          http_response_code(400);
+          echo json_encode([
+            "success" => false,
+            "message" => "Dados incompletos. Nome e curso_id são obrigatórios."
+          ]);
         }
         break;
 

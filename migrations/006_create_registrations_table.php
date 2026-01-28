@@ -3,6 +3,9 @@
  * MIGRATION 006 - Create registrations table (Matrículas)
  * 
  * 📁 LOCATION: migrations/006_create_registrations_table.php
+ * 
+ * NOTA: Credenciais de login (username e password) foram removidas.
+ *       Autenticação agora é feita exclusivamente pela tabela students.
  */
 
 require_once __DIR__ . '/../config/bootstrap.php';
@@ -45,10 +48,6 @@ CREATE TABLE IF NOT EXISTS registrations (
     enrollment_fee DECIMAL(10, 2) DEFAULT 0.00 COMMENT 'Taxa de matrícula',
     monthly_fee DECIMAL(10, 2) DEFAULT 0.00 COMMENT 'Valor da mensalidade',
     
-    -- Credenciais de acesso ao sistema
-    username VARCHAR(50) UNIQUE NOT NULL COMMENT 'Usuário para login no sistema',
-    password VARCHAR(255) NOT NULL COMMENT 'Senha hash para login',
-    
     -- Observações
     observations TEXT DEFAULT NULL COMMENT 'Observações sobre a matrícula',
     
@@ -83,7 +82,6 @@ CREATE TABLE IF NOT EXISTS registrations (
     INDEX idx_status (status),
     INDEX idx_payment_status (payment_status),
     INDEX idx_enrollment_number (enrollment_number),
-    INDEX idx_username (username),
     
     -- ✅ UNIQUE constraint para evitar matrículas duplicadas no mesmo período
     UNIQUE KEY unique_student_course_period (student_id, course_id, period)
@@ -100,8 +98,6 @@ try {
     echo "   ✓ course_id → cursos.codigo (REQUIRED)\n";
     echo "   ✓ class_id → turmas.id (OPTIONAL)\n";
     echo "   ✓ enrollment_number (UNIQUE)\n";
-    echo "   ✓ username (UNIQUE)\n";
-    echo "   ✓ password (HASHED)\n";
     echo "   ✓ Unique constraint: student + course + period\n";
     
     // Register migration as executed

@@ -9,27 +9,37 @@
  */
 
 // ============================================================
-// 🔧 SUPER DEBUG MODE
+// DEBUG MODE (só em development)
 // ============================================================
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+$app_env = getenv('APP_ENV') ?: 'production';
+$is_debug = ($app_env === 'development');
+
+if ($is_debug) {
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
+} else {
+    ini_set('display_errors', 0);
+    error_reporting(E_ALL);
+}
 
 $logFile = __DIR__ . '/debug.log';
 
 function debugLog($message) {
-    global $logFile;
+    global $logFile, $is_debug;
+    if (!$is_debug) return;
+
     $timestamp = date('Y-m-d H:i:s');
-    
+
     if (is_array($message) || is_object($message)) {
         $message = print_r($message, true);
     }
-    
+
     file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND);
 }
 
 // Iniciar log
-file_put_contents($logFile, "\n=== LOGIN DEBUG " . date('Y-m-d H:i:s') . " ===\n", FILE_APPEND);
+debugLog("=== LOGIN DEBUG " . date('Y-m-d H:i:s') . " ===");
 debugLog([
     'timestamp' => date('Y-m-d H:i:s'),
     'request_uri' => $_SERVER['REQUEST_URI'],
@@ -93,11 +103,9 @@ try {
 } catch (Throwable $e) {
     debugLog("❌ ERRO ao carregar database.php: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Erro ao carregar configuração',
-        'debug' => $e->getMessage()
-    ]);
+    $err = ['success' => false, 'message' => 'Erro ao carregar configuração'];
+    if ($is_debug) $err['debug'] = $e->getMessage();
+    echo json_encode($err);
     exit();
 }
 
@@ -107,11 +115,9 @@ try {
 } catch (Throwable $e) {
     debugLog("❌ ERRO ao carregar JWTHandler.php: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Erro ao carregar JWT',
-        'debug' => $e->getMessage()
-    ]);
+    $err = ['success' => false, 'message' => 'Erro ao carregar JWT'];
+    if ($is_debug) $err['debug'] = $e->getMessage();
+    echo json_encode($err);
     exit();
 }
 
@@ -134,11 +140,12 @@ if (!$data) {
     exit();
 }
 
-// ============================================================
-// 7️⃣ VALIDAR CAMPOS
-// ============================================================
+
 $identifier = '';
-if (isset($data['email'])) {
+
+if (isset($data['identifier'])) {
+    $identifier = trim($data['identifier']);
+} elseif (isset($data['email'])) {
     $identifier = trim($data['email']);
 } elseif (isset($data['username'])) {
     $identifier = trim($data['username']);
@@ -188,22 +195,48 @@ try {
     // ========================================
     debugLog("🔍 Buscando ADMIN com identifier: $identifier");
     
-    $query = "SELECT id, nome, email, senha, role, created_at 
-              FROM users 
-              WHERE email = :identifier 
+    $query = "SELECT id, nome, email, senha, role, status, created_at
+              FROM users
+              WHERE email = :identifier
               LIMIT 1";
-    
+
     $stmt = $db->prepare($query);
     $stmt->bindParam(':identifier', $identifier);
     $stmt->execute();
-    
+
     if ($stmt->rowCount() > 0) {
         debugLog("✅ ADMIN encontrado!");
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        $user_type = 'admin';
-        
+        $user_type = $user['role']; // 'admin' ou 'academic_admin'
+
+        // Verificar se a conta está activa
+        if ($user['status'] === 'inactive') {
+            debugLog("❌ Conta ADMIN inactiva");
+            http_response_code(403);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Conta desactivada. Contacte o administrador.'
+            ]);
+            exit();
+        }
+
         if (password_verify($senha, $user['senha'])) {
             debugLog("✅ Senha ADMIN correta");
+
+            // Atualizar last_login
+            try {
+                $updateQuery = "UPDATE users SET last_login = NOW() WHERE id = :id";
+                $updateStmt = $db->prepare($updateQuery);
+                $updateStmt->bindParam(':id', $user['id']);
+                $updateStmt->execute();
+                debugLog("✅ last_login admin atualizado");
+            } catch (PDOException $e) {
+                debugLog("⚠️ Erro ao atualizar last_login admin: " . $e->getMessage());
+            }
+
+            // Remover status da resposta
+            unset($user['status']);
+
             goto login_success;
         } else {
             debugLog("❌ Senha ADMIN incorreta");
@@ -333,37 +366,74 @@ try {
     login_success:
     
     debugLog("🎉 Gerando tokens JWT...");
-    
+
+    // user_type já é o valor real: admin, academic_admin, student, teacher
+    $refresh_user_type = $user_type;
+
     $jwt = new JWTHandler();
     $access_token = $jwt->generateToken(
-        $user['id'], 
-        $user['email'], 
-        $user['role']
+        $user['id'],
+        $user['email'],
+        $user['role'],
+        $refresh_user_type
     );
-    $refresh_token = $jwt->generateRefreshToken($user['id']);
-    
+    $refresh_token = $jwt->generateRefreshToken($user['id'], $refresh_user_type);
+
     debugLog("✅ Tokens gerados!");
-    
-    // Salvar refresh token (apenas admins)
-    if ($user_type === 'admin') {
-        try {
-            $update_query = "UPDATE users SET 
-                            refresh_token = :refresh_token, 
-                            token_expiry = DATE_ADD(NOW(), INTERVAL 7 DAY)
-                            WHERE id = :user_id";
-            $update_stmt = $db->prepare($update_query);
-            $update_stmt->bindParam(':refresh_token', $refresh_token);
-            $update_stmt->bindParam(':user_id', $user['id']);
-            $update_stmt->execute();
-            debugLog("✅ Refresh token salvo");
-        } catch (PDOException $e) {
-            debugLog("⚠️ Erro ao salvar refresh token: " . $e->getMessage());
+
+    // Salvar refresh token na tabela refresh_tokens (TODOS os tipos)
+    try {
+        $token_hash = hash('sha256', $refresh_token);
+        $expires_at = date('Y-m-d H:i:s', strtotime('+7 days'));
+
+        $insert_query = "INSERT INTO refresh_tokens (user_id, user_type, token_hash, expires_at)
+                         VALUES (:user_id, :user_type, :token_hash, :expires_at)";
+        $insert_stmt = $db->prepare($insert_query);
+        $insert_stmt->bindParam(':user_id', $user['id']);
+        $insert_stmt->bindParam(':user_type', $refresh_user_type);
+        $insert_stmt->bindParam(':token_hash', $token_hash);
+        $insert_stmt->bindParam(':expires_at', $expires_at);
+        $insert_stmt->execute();
+        debugLog("✅ Refresh token salvo na tabela refresh_tokens");
+
+        // Limitar a 5 sessões activas por utilizador/tipo
+        // Revoga os tokens mais antigos acima do limite
+        $max_sessions = 5;
+        $cleanup = $db->prepare("
+            UPDATE refresh_tokens
+            SET revoked_at = NOW()
+            WHERE user_id = :uid
+              AND user_type = :ut
+              AND revoked_at IS NULL
+              AND id NOT IN (
+                  SELECT id FROM (
+                      SELECT id FROM refresh_tokens
+                      WHERE user_id = :uid2
+                        AND user_type = :ut2
+                        AND revoked_at IS NULL
+                      ORDER BY created_at DESC
+                      LIMIT $max_sessions
+                  ) AS recent
+              )
+        ");
+        $cleanup->bindParam(':uid', $user['id']);
+        $cleanup->bindParam(':ut', $refresh_user_type);
+        $cleanup->bindParam(':uid2', $user['id']);
+        $cleanup->bindParam(':ut2', $refresh_user_type);
+        $cleanup->execute();
+        $revoked_count = $cleanup->rowCount();
+        if ($revoked_count > 0) {
+            debugLog("🧹 $revoked_count sessões antigas revogadas (limite: $max_sessions)");
         }
+    } catch (PDOException $e) {
+        debugLog("⚠️ Erro ao salvar refresh token: " . $e->getMessage());
     }
     
-    // Remover senha
+    // Remover campos internos da resposta
     unset($user['senha']);
     unset($user['password']);
+    unset($user['status']);
+    unset($user['created_at']);
     
     debugLog("✅ LOGIN COMPLETO - user_id: " . $user['id'] . ", role: " . $user['role']);
     
@@ -387,27 +457,17 @@ try {
 } catch (PDOException $e) {
     debugLog("❌ ERRO PDO: " . $e->getMessage() . "\n" . $e->getTraceAsString());
     http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Erro ao processar requisição',
-        'debug' => [
-            'error' => $e->getMessage(),
-            'line' => $e->getLine()
-        ]
-    ]);
+    $err = ['success' => false, 'message' => 'Erro ao processar requisição'];
+    if ($is_debug) $err['debug'] = ['error' => $e->getMessage(), 'line' => $e->getLine()];
+    echo json_encode($err);
     exit();
     
 } catch (Throwable $e) {
     debugLog("❌ ERRO GERAL: " . $e->getMessage() . "\n" . $e->getTraceAsString());
     http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Erro inesperado',
-        'debug' => [
-            'error' => $e->getMessage(),
-            'line' => $e->getLine()
-        ]
-    ]);
+    $err = ['success' => false, 'message' => 'Erro inesperado'];
+    if ($is_debug) $err['debug'] = ['error' => $e->getMessage(), 'line' => $e->getLine()];
+    echo json_encode($err);
     exit();
 }
 ?>
